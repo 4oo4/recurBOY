@@ -125,6 +125,7 @@ class Display(object):
         self.update_count = 0
         self.pages = {"VIDEO": Page("VIDEO"), "PATTERN": Page("PATTERN"), "EFFECT": Page("EFFECT"), "EXTERNAL": Page("EXTERNAL"), "TEXT": Page("TEXT"), "FONT": Page("FONT"), "SETTING": Page("SETTING"), "MESSAGE": Page("MESSAGE")}
         self.current_page_name = 'VIDEO'
+        self.update_event = threading.Event()
 
 
     @staticmethod
@@ -226,23 +227,23 @@ class Display(object):
         disp = create_display()
         disp.begin()
         draw = disp.draw()
-
+    
     def loop_over_display_update(self):
         while True:
-            if self.update_count > 0:
-                self.update_display()
-                time.sleep(0.1)
-                self.update_count = self.update_count - 1
+            self.update_event.wait()
+            self.update_event.clear()
+            time.sleep(0.05)
+            self.update_event.clear()
+            self.update_display()
 
     def update_display(self):
         disp.clear()
         self.create_this_screen()  
         disp.draw()
         disp.display()
-        time.sleep(0.1)
 
-    def update_display_count(self):
-        self.update_count = self.update_count + 1        
+    def update_display_count(self): 
+        self.update_event.set()
 
 def setup_gpio():
     import RPi.GPIO as GPIO
