@@ -696,6 +696,7 @@ void ofApp::sendMenuList(string address, vector<string> list) {
         if (estimatedSize > OSC_MESSAGE_SIZE_LIMIT) {
             // Send the current message
             sender.sendMessage(response, true);
+            ofSleepMillis(10);
 
             // Start a new message
             response.clear();
@@ -859,6 +860,8 @@ vector<string> ofApp::getPathsInFolder(string folderPath, string mode){
                 }
             } 
         }
+        ofSort(thisList, alphabetical);
+
         return thisList;
     }
     else{

@@ -13,7 +13,7 @@ import threading
 import argparse
 import time
 import json
-
+import socket
 
 
 def create_display():
@@ -174,6 +174,7 @@ class Display(object):
         this_dispatcher.map("/RESTART_DISPLAY", self.restart_display)
 
         server = osc_server.ThreadingOSCUDPServer((server_args.ip, server_args.port), this_dispatcher)
+        server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 262144)
         server_thread = threading.Thread(target=server.serve_forever)
         server_thread.start()
         return server
