@@ -15,6 +15,9 @@ import time
 import json
 import socket
 
+# def _log(msg):
+#     print("[{}] {}".format(time.monotonic(), msg))
+
 
 def create_display():
 
@@ -47,6 +50,9 @@ def create_display():
 
 
 disp = create_display()
+# If the Pi was rebooted instead of cold-booted, clear the display framebuffer memory
+disp.clear()
+disp.display()
 # Initialize display.
 disp.begin()
 
@@ -67,7 +73,7 @@ def draw_rotated_text(image, text, position, angle, font, fill=(255,255,255),bac
     # Get rendered font width and height.
     draw = ImageDraw.Draw(image)
     width, _ = draw.textsize(text, font=font)
-    # standardize font height, prevent vertical jitter when scrolling
+    # Standardize font height, prevent vertical jitter when scrolling text
     ascent, descent = font.getmetrics()
     height = ascent + descent
     # Create a new image with transparent background to store the text.
@@ -100,7 +106,7 @@ class ScrollText:
         if self.pause_counter > 0:
             self.pause_counter -= 1
             return self._slice(self.offset)
-        
+        # Scroll 4 chars at a time
         self.offset += self.direction * 4
 
         if self.offset >= max_offset:
@@ -122,6 +128,7 @@ class ScrollText:
         return s
 
     def preview(self):
+        # Static filename preview - filename with elipses or original short filename
         if self.needs_scroll():
             return self._slice(0)
         return self.text
@@ -178,6 +185,7 @@ class Page(object):
 
 class Display(object):
     def __init__(self):
+        self.lock = threading.Lock()
         self.osc_server = self.setup_osc_server()
         self.update_count = 0
         self.pages = {"VIDEO": Page("VIDEO"), "PATTERN": Page("PATTERN"), "EFFECT": Page("EFFECT"), "EXTERNAL": Page("EXTERNAL"), "TEXT": Page("TEXT"), "FONT": Page("FONT"), "SETTING": Page("SETTING"), "MESSAGE": Page("MESSAGE")}
@@ -239,69 +247,91 @@ class Display(object):
         return server
 
     def set_list(self, unused_addr, *args):
+        #_log("set_list {} ({} items)".format(unused_addr, len(args)))
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
         filenames = [i.split("/")[-1] for i in list(args)]
-        self.pages[page_name].menu_list.extend(filenames)
-        self.pages[page_name].scroll_list.extend(ScrollText(i, 25, pause_ticks=4) for i in filenames)
+        with self.lock:
+            page = self.pages[page_name]
+            page.menu_list.extend(filenames)
+            page.scroll_list.extend(ScrollText(i, 25, pause_ticks=4) for i in filenames)
         self.update_display_count()
 
     def clear_list(self, unused_addr, bool):
+        #_log("clear_list {}".format(unused_addr))
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
-        self.pages[page_name].menu_list = []
-        self.pages[page_name].scroll_list = []
+        with self.lock:
+            thisPage = self.pages[page_name]
+            thisPage.menu_list = []
+            thisPage.scroll_list = []
+            thisPage.selected_row = 0
+            thisPage.list_offset = 0
+        self.update_display_count()
 
     def set_selected_row(self, unused_addr, row):
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
-        thisPage = self.pages[page_name]
-        if thisPage.scroll_list:
-            thisPage.scroll_list[thisPage.selected_row].reset()
-        if abs(thisPage.selected_row - row) > 1 and row == 0:
-            # if difference is greater than 1 and row 0 must be a wrap over    
-            thisPage.list_offset = 0 
-        elif abs(thisPage.selected_row - row) > 1:
-            # otherwise if difference is greater than 1 must be wrap under    
-            thisPage.list_offset = max(row - 5, 0)
-        elif row == thisPage.list_offset - 1:
-            # otherwise if one less than offset moving page down    
-            thisPage.list_offset = thisPage.list_offset - 1
-        elif row == thisPage.list_offset + 5 + 1:
-            # otherwise if one over offset page moving page up    
-            thisPage.list_offset = thisPage.list_offset + 1
-
-
-        thisPage.selected_row = row
+        with self.lock:
+            thisPage = self.pages[page_name]
+            #_log("set_selected_row {} row={} (was {}), list_len={}".format(page_name, row, thisPage.selected_row, len(thisPage.scroll_list)))
+            # Reset text scrolling when the user changes their menu selection
+            if thisPage.scroll_list and thisPage.selected_row < len(thisPage.scroll_list):
+                thisPage.scroll_list[thisPage.selected_row].reset()
+            if abs(thisPage.selected_row - row) > 1 and row == 0:
+                # if difference is greater than 1 and row 0 must be a wrap over    
+                thisPage.list_offset = 0 
+            elif abs(thisPage.selected_row - row) > 1:
+                # otherwise if difference is greater than 1 must be wrap under    
+                thisPage.list_offset = max(row - 5, 0)
+            elif row == thisPage.list_offset - 1:
+                # otherwise if one less than offset moving page down    
+                thisPage.list_offset = thisPage.list_offset - 1
+            elif row == thisPage.list_offset + 5 + 1:
+                # otherwise if one over offset page moving page up    
+                thisPage.list_offset = thisPage.list_offset + 1
+            thisPage.selected_row = row
         self.update_display_count()
 
          
     def set_playing_row(self, unused_addr, playing_row):
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
-        self.pages[page_name].playing_row = playing_row
+        with self.lock:
+            thisPage = self.pages[page_name]
+            #_log("set_playing_row {} row={} (was {}), list_len={}".format(page_name, playing_row, thisPage.playing_row, len(thisPage.scroll_list)))
+            thisPage.playing_row = playing_row
         self.update_display_count()
 
     def set_playing(self, unused_addr, is_playing):
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
-        self.pages[page_name].playing = is_playing
+        with self.lock:
+            thisPage = self.pages[page_name]
+            #_log("set_playing {} is_playing={} (was {})".format(page_name, is_playing, thisPage.playing))
+            thisPage.playing = is_playing
         self.update_display_count()
 
     def set_current_page(self, unused_addr, page_name):
-        self.current_page_name = page_name
+        with self.lock:
+            #thisPage = self.pages[page_name]
+            _log("set_current_page {} (was {})".format(page_name, self.current_page_name))
+            self.current_page_name = page_name
         self.update_display_count()
 
     def restart_display(self, unused_addr, bool):
         global disp, draw
-        disp = create_display()
-        disp.begin()
-        draw = disp.draw()
+        with self.lock:
+            disp = create_display()
+            disp.begin()
+            draw = disp.draw()
     
     def loop_over_display_update(self):
         while True:
-            thisPage = self.pages[self.current_page_name]
-            needs_animation = False
-            if thisPage.scroll_list and thisPage.selected_row < len(thisPage.scroll_list):
-                view_index = thisPage.selected_row - thisPage.list_offset
-                if 0 <= view_index < len(thisPage.scroll_list):
-                    selected_scroll = thisPage.scroll_list[thisPage.selected_row]
-                    needs_animation = selected_scroll.needs_scroll()
+            #_log("loop tick")
+            with self.lock:
+                thisPage = self.pages[self.current_page_name]
+                # Only update for text scroll when needed (changed selection, long filename)
+                needs_animation = (
+                    bool(thisPage.scroll_list)
+                    and thisPage.selected_row < len(thisPage.scroll_list)
+                    and thisPage.scroll_list[thisPage.selected_row].needs_scroll()
+                )
             timeout = 0.15 if needs_animation else None
             event_fired = self.update_event.wait(timeout=timeout)
             self.update_event.clear()
@@ -312,7 +342,8 @@ class Display(object):
 
     def update_display(self):
         disp.clear()
-        self.create_this_screen()  
+        with self.lock:
+            self.create_this_screen()  
         disp.draw()
         disp.display()
 
