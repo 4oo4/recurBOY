@@ -295,7 +295,15 @@ class Display(object):
     
     def loop_over_display_update(self):
         while True:
-            event_fired = self.update_event.wait(timeout=0.15)
+            thisPage = self.pages[self.current_page_name]
+            needs_animation = False
+            if thisPage.scroll_list and thisPage.selected_row < len(thisPage.scroll_list):
+                view_index = thisPage.selected_row - thisPage.list_offset
+                if 0 <= view_index < len(thisPage.scroll_list):
+                    selected_scroll = thisPage.scroll_list[thisPage.selected_row]
+                    needs_animation = selected_scroll.needs_scroll()
+            timeout = 0.15 if needs_animation else None
+            event_fired = self.update_event.wait(timeout=timeout)
             self.update_event.clear()
             if event_fired:
                 time.sleep(0.05)
