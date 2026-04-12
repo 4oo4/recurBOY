@@ -240,7 +240,7 @@ class Display(object):
         this_dispatcher.map("/CURRENT_PAGE", self.set_current_page)
         this_dispatcher.map("/RESTART_DISPLAY", self.restart_display)
 
-        server = osc_server.ThreadingOSCUDPServer((server_args.ip, server_args.port), this_dispatcher)
+        server = osc_server.BlockingOSCUDPServer((server_args.ip, server_args.port), this_dispatcher)
         server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 262144)
         server_thread = threading.Thread(target=server.serve_forever)
         server_thread.start()
@@ -310,7 +310,7 @@ class Display(object):
     def set_current_page(self, unused_addr, page_name):
         with self.lock:
             #thisPage = self.pages[page_name]
-            _log("set_current_page {} (was {})".format(page_name, self.current_page_name))
+            #_log("set_current_page {} (was {})".format(page_name, self.current_page_name))
             self.current_page_name = page_name
         self.update_display_count()
 
