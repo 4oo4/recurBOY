@@ -66,7 +66,10 @@ font_fx = ImageFont.truetype(font_name, 14)
 def draw_rotated_text(image, text, position, angle, font, fill=(255,255,255),background=(0,0,0) ):
     # Get rendered font width and height.
     draw = ImageDraw.Draw(image)
-    width, height = draw.textsize(text, font=font)
+    width, _ = draw.textsize(text, font=font)
+    # standardize font height, prevent vertical jitter when scrolling
+    ascent, descent = font.getmetrics()
+    height = ascent + descent
     # Create a new image with transparent background to store the text.
     textimage = Image.new('RGBA', (width, height), background + (255,))
     # Render the text.
@@ -77,10 +80,63 @@ def draw_rotated_text(image, text, position, angle, font, fill=(255,255,255),bac
     # Paste the text into the image, using it as a mask for transparency.
     image.paste(rotated, position, rotated)
 
+class ScrollText:
+    def __init__(self, text, max_length, pause_ticks=4):
+        self.text = text
+        self.max_length = max_length
+        self.pause_ticks = pause_ticks
+        self.offset = 0
+        self.direction = 1
+        self.pause_counter = pause_ticks
+
+    def needs_scroll(self):
+        return len(self.text) > self.max_length
+    
+    def tick(self):
+        if not self.needs_scroll():
+            return self.text
+        max_offset = len(self.text) - self.max_length
+
+        if self.pause_counter > 0:
+            self.pause_counter -= 1
+            return self._slice(self.offset)
+        
+        self.offset += self.direction * 4
+
+        if self.offset >= max_offset:
+            self.offset = max_offset
+            self.direction = -1
+            self.pause_counter = self.pause_ticks
+        elif self.offset <= 0:
+            self.offset = 0
+            self.direction = 1
+            self.pause_counter = self.pause_ticks
+        return self._slice(self.offset)
+
+    def _slice(self, offset):
+        s = self.text[offset:offset + self.max_length]
+        if offset > 0:
+            s = "…" + s[1:]
+        if offset < len(self.text) - self.max_length:
+            s = s[:-1] + "…"
+        return s
+
+    def preview(self):
+        if self.needs_scroll():
+            return self._slice(0)
+        return self.text
+
+    def reset(self):
+        self.offset = 0
+        self.direction = 1
+        self.pause_counter = self.pause_ticks
+        
+
 class Page(object):
     def __init__(self, name):
         self.name = name
         self.menu_list = []
+        self.scroll_list = []
         self.selected_row = 0
         self.list_offset = 0
         self.playing_row =-1
@@ -116,7 +172,8 @@ class Page(object):
             self.title_color = (0,0,255) # red
     
     def get_view_list(self):
-        return self.menu_list[self.list_offset:self.list_offset + 6] 
+        offset_end = self.list_offset + 6
+        return list(zip(self.menu_list[self.list_offset:offset_end] , self.scroll_list[self.list_offset:offset_end]))
 
 
 class Display(object):
@@ -147,13 +204,15 @@ class Display(object):
         elif self.pages["TEXT"].playing:
             draw_rotated_text(disp.buffer, '[xt]', (110, 128),270, font_fx, fill=(0,0,0), background=(255,0,0))
         # print content
-        for i, value in enumerate(thisPage.get_view_list()):
+        for i, (_, scroll) in enumerate(thisPage.get_view_list()):
+            display_value = scroll.preview()
             if i == thisPage.selected_row - thisPage.list_offset:
-                draw_rotated_text(disp.buffer, value, (110 - 15 - i*15, 10) ,270, font, fill=(0,0,0), background=(255,255,255))        
+                display_value = scroll.tick()
+                draw_rotated_text(disp.buffer, display_value, (110 - 15 - i*15, 10) ,270, font, fill=(0,0,0), background=(255,255,255))        
             elif i == thisPage.playing_row - thisPage.list_offset:
-                draw_rotated_text(disp.buffer, value, (110 - 15 - i*15, 10) ,270, font, fill=(0,0,0), background=thisPage.title_color)   
+                draw_rotated_text(disp.buffer, display_value, (110 - 15 - i*15, 10) ,270, font, fill=(0,0,0), background=thisPage.title_color)   
             else:
-                draw_rotated_text(disp.buffer, value, (110 - 15 - i*15, 10) ,270, font, fill=(255,255,255), )
+                draw_rotated_text(disp.buffer, display_value, (110 - 15 - i*15, 10) ,270, font, fill=(255,255,255), )
 
     
     def setup_osc_server(self):
@@ -181,16 +240,21 @@ class Display(object):
 
     def set_list(self, unused_addr, *args):
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
-        self.pages[page_name].menu_list.extend([i.split("/")[-1] for i in list(args)])
+        filenames = [i.split("/")[-1] for i in list(args)]
+        self.pages[page_name].menu_list.extend(filenames)
+        self.pages[page_name].scroll_list.extend(ScrollText(i, 25, pause_ticks=4) for i in filenames)
         self.update_display_count()
 
     def clear_list(self, unused_addr, bool):
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
-        self.pages[page_name].menu_list = []    
+        self.pages[page_name].menu_list = []
+        self.pages[page_name].scroll_list = []
 
     def set_selected_row(self, unused_addr, row):
         page_name = unused_addr.rsplit('/', 1)[-1].upper()
         thisPage = self.pages[page_name]
+        if thisPage.scroll_list:
+            thisPage.scroll_list[thisPage.selected_row].reset()
         if abs(thisPage.selected_row - row) > 1 and row == 0:
             # if difference is greater than 1 and row 0 must be a wrap over    
             thisPage.list_offset = 0 
@@ -231,10 +295,11 @@ class Display(object):
     
     def loop_over_display_update(self):
         while True:
-            self.update_event.wait()
+            event_fired = self.update_event.wait(timeout=0.15)
             self.update_event.clear()
-            time.sleep(0.05)
-            self.update_event.clear()
+            if event_fired:
+                time.sleep(0.05)
+                self.update_event.clear()
             self.update_display()
 
     def update_display(self):
