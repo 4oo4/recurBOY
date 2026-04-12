@@ -42,16 +42,22 @@ void ofApp::setup(){
     settingPage.name = "SETTING";
     messagePage.name = "MESSAGE";
 
-    videoPage.menuList = getPathsForMenu(videoPage); //getPathsInFolder("/home/pi/Videos/", "video");
-    sendMenuList("/LIST/VIDEO", videoPage.menuList);
-    patternPage.menuList = getPathsForMenu(patternPage); // getPathsInFolder("/home/pi/Shaders/", "shader");
-    sendMenuList("/LIST/PATTERN", patternPage.menuList);
-    effectPage.menuList = getPathsForMenu(effectPage);
-    sendMenuList("/LIST/EFFECT", effectPage.menuList);
-    textPage.menuList = getPathsForMenu(textPage);
-    sendMenuList("/LIST/TEXT", textPage.menuList);
-    fontPage.menuList = getPathsForMenu(fontPage);
-    sendMenuList("/LIST/FONT", fontPage.menuList);
+    //videoPage.menuList = getPathsForMenu(videoPage); //getPathsInFolder("/home/pi/Videos/", "video");
+    //sendMenuList("/LIST/VIDEO", videoPage.menuList);
+    //patternPage.menuList = getPathsForMenu(patternPage); // getPathsInFolder("/home/pi/Shaders/", "shader");
+    //sendMenuList("/LIST/PATTERN", patternPage.menuList);
+    //effectPage.menuList = getPathsForMenu(effectPage);
+    //sendMenuList("/LIST/EFFECT", effectPage.menuList);
+    //textPage.menuList = getPathsForMenu(textPage);
+    //sendMenuList("/LIST/TEXT", textPage.menuList);
+    //fontPage.menuList = getPathsForMenu(fontPage);
+    //sendMenuList("/LIST/FONT", fontPage.menuList);
+
+    regenerateAndSendList(videoPage);
+    regenerateAndSendList(patternPage);
+    regenerateAndSendList(effectPage);
+    regenerateAndSendList(textPage);
+    regenerateAndSendList(fontPage);
     settingPage.menuList = setting.generateMenuList();
     sendMenuList("/LIST/SETTING", settingPage.menuList);
     
@@ -546,16 +552,22 @@ void ofApp::enter(){
 void ofApp::switchSource(){
     // regenerate file lists again - incase something has changed
 
-    videoPage.menuList = getPathsForMenu(videoPage); //getPathsInFolder("/home/pi/Videos/", "video");
-    sendMenuList("/LIST/VIDEO", videoPage.menuList);
-    patternPage.menuList = getPathsForMenu(patternPage); // getPathsInFolder("/home/pi/Shaders/", "shader");
-    sendMenuList("/LIST/PATTERN", patternPage.menuList);
-    effectPage.menuList = getPathsForMenu(effectPage);
-    sendMenuList("/LIST/EFFECT", effectPage.menuList);
-    textPage.menuList = getPathsForMenu(textPage);
-    sendMenuList("/LIST/TEXT", textPage.menuList);
-    fontPage.menuList = getPathsForMenu(fontPage);
-    sendMenuList("/LIST/FONT", fontPage.menuList);
+    //videoPage.menuList = getPathsForMenu(videoPage); //getPathsInFolder("/home/pi/Videos/", "video");
+    //sendMenuList("/LIST/VIDEO", videoPage.menuList);
+    //patternPage.menuList = getPathsForMenu(patternPage); // getPathsInFolder("/home/pi/Shaders/", "shader");
+    //sendMenuList("/LIST/PATTERN", patternPage.menuList);
+    //effectPage.menuList = getPathsForMenu(effectPage);
+    //sendMenuList("/LIST/EFFECT", effectPage.menuList);
+    //textPage.menuList = getPathsForMenu(textPage);
+    //sendMenuList("/LIST/TEXT", textPage.menuList);
+    //fontPage.menuList = getPathsForMenu(fontPage);
+    //sendMenuList("/LIST/FONT", fontPage.menuList);
+
+    regenerateAndSendList(videoPage);
+    regenerateAndSendList(patternPage);
+    regenerateAndSendList(effectPage);
+    regenerateAndSendList(textPage);
+    regenerateAndSendList(fontPage);
 
     currentSourceIndex = (currentSourceIndex + 1) % sourceModes.size() ;
     currentPage = sourceModes[currentSourceIndex];
@@ -727,11 +739,23 @@ void ofApp::sendMenuList(string address, vector<string> list) {
 //     sender.sendMessage(response, true);
 // }
 
+void ofApp::regenerateAndSendList(pageObject& thisObject) {
+    thisObject.menuList = getPathsForMenu(thisObject);
+    thisObject.selectedRow = 0;
+    thisObject.playingRow = -1;
+    sendMenuList("/LIST/" + thisObject.name, thisObject.menuList);
+    sendIntMessage("/SELECTED_ROW/" + thisObject.name, 0);
+    sendIntMessage("/PLAYING_ROW/" + thisObject.name, -1);
+}
+
 bool alphabetical(string a, string b){return a<b;}
 
 vector<string> ofApp::getPathsForMenu(pageObject& thisObject){
     vector<string> combinedPaths;
     vector<string> folderPaths;
+
+    ofSort(combinedPaths, alphabetical);
+
     if(thisObject.currentFolder == "/"){
         // this object needs combined root menu
         folderPaths = getPathFromCombinedRootLocations(thisObject.name); 

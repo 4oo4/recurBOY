@@ -261,6 +261,7 @@ static string moveFolderUpOneLevel(const string& path) {
 
     pageObject& getPagebyName(string pageName);
     vector<string> getPathsForMenu(pageObject& thisObject);
+    void regenerateAndSendList(pageObject& thisObject);
 
     string currentPage; // currentPage is the page shown on display
     string runningSource; // runningSource is the source that is being used right now (could be different to what is shown on display)
